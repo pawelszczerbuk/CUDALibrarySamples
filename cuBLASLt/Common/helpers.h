@@ -61,11 +61,12 @@ struct TestBench {
             ComputeType Ascale = ComputeType{2.0f}, ComputeType Bscale = ComputeType{0.5f},
             ComputeType Cscale = ComputeType{1.0f}, ComputeType Dscale = ComputeType{1.0f}) :
         m(m), n(n), k(k), N(N), alpha(alpha), beta(beta), workspaceSize(workspaceSize), Ahost(m * k * N), Bhost(n * k * N),
-        Chost(m * n * N), biasHost(m * N), AscaleHost(Ascale), BscaleHost(Bscale), CscaleHost(Cscale), DscaleHost(Dscale) {
+        Chost(m * n * N), Dhost(m * n * N), biasHost(m * N), AscaleHost(Ascale), BscaleHost(Bscale), CscaleHost(Cscale), DscaleHost(Dscale) {
         checkCublasStatus(cublasLtCreate(&ltHandle));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Adev), m * k * N * sizeof(InType)));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Bdev), n * k * N  * sizeof(InType)));
-        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Cdev), m * n * N  * sizeof(OutType)));
+        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Cdev), m * n * N  * sizeof(__half)));
+        checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Ddev), m * n * N  * sizeof(OutType)));
         checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&biasDev), m * N * sizeof(OutType)));
         checkCudaStatus(cudaMalloc(&workspace, workspaceSize));
         checkCudaStatus(cudaStreamCreate(&stream));
@@ -89,6 +90,7 @@ struct TestBench {
         checkCudaStatus(cudaFree(Adev));
         checkCudaStatus(cudaFree(Bdev));
         checkCudaStatus(cudaFree(Cdev));
+        checkCudaStatus(cudaFree(Ddev));
         checkCudaStatus(cudaFree(biasDev));
         checkCudaStatus(cudaFree(workspace));
         if (perTensorScalingEnabled) {
@@ -102,14 +104,19 @@ struct TestBench {
     }
 
     void fillData() {
-        for (int i = 0; i < m * k * N; i++) Ahost[i] = InType(i);
-        for (int i = 0; i < n * k * N; i++) Bhost[i] = InType(i);
-        for (int i = 0; i < m * N; i++) biasHost[i] = InType(i + 1);
+        // for (int i = 0; i < m * k * N; i++) Ahost[i] = InType(i);
+        // for (int i = 0; i < n * k * N; i++) Bhost[i] = InType(i);
+        // for (int i = 0; i < m * N; i++) biasHost[i] = InType(i + 1);
+        for (int i = 0; i < m * k * N; i++) ((uint8_t*)Ahost.data())[i] = rand() % 256;
+        for (int i = 0; i < n * k * N; i++) ((uint8_t*)Bhost.data())[i] = rand() % 256;
+        for (int i = 0; i < m * n * N; i++) ((__half*)Chost.data())[i] = __float2half_rn(rand() / 256.f);
+        for (int i = 0; i < m * N; i++) ((uint8_t*)biasHost.data())[i] = rand() % 256;
     }
 
     void copyDataToDevice() {
         checkCudaStatus(cudaMemcpyAsync(Adev, Ahost.data(), Ahost.size() * sizeof(Ahost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(Bdev, Bhost.data(), Bhost.size() * sizeof(Bhost[0]), cudaMemcpyHostToDevice, stream));
+        checkCudaStatus(cudaMemcpyAsync(Cdev, Chost.data(), Chost.size() * sizeof(Chost[0]), cudaMemcpyHostToDevice, stream));
         checkCudaStatus(cudaMemcpyAsync(biasDev, biasHost.data(), biasHost.size() * sizeof(biasHost[0]), cudaMemcpyHostToDevice));
         if (perTensorScalingEnabled) {
             checkCudaStatus(cudaMemcpyAsync(AscaleDev, &AscaleHost, sizeof(AscaleHost), cudaMemcpyHostToDevice));
@@ -121,7 +128,7 @@ struct TestBench {
     }
 
     void copyDataFromDevice() {
-        checkCudaStatus(cudaMemcpyAsync(Chost.data(), Cdev, Chost.size() * sizeof(Chost[0]), cudaMemcpyDeviceToHost, stream));
+        checkCudaStatus(cudaMemcpyAsync(Dhost.data(), Ddev, Dhost.size() * sizeof(Dhost[0]), cudaMemcpyDeviceToHost, stream));
     }
 
     void streamSynchronize() {
@@ -142,10 +149,12 @@ struct TestBench {
     ComputeType alpha, beta;
     size_t workspaceSize;
     std::vector<InType> Ahost, Bhost;
-    std::vector<OutType> Chost, biasHost;
+    std::vector<OutType> Dhost, biasHost;
+    std::vector<__half> Chost;
     void *workspace;
     InType *Adev, *Bdev;
-    OutType *Cdev, *biasDev;
+    OutType *Ddev, *biasDev;
+    __half *Cdev;
     cudaStream_t stream;
     cublasLtHandle_t ltHandle;
     ComputeType AscaleHost, BscaleHost, CscaleHost, DscaleHost, DamaxHost;

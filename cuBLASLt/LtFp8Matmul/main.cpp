@@ -35,8 +35,15 @@
 #include "sample_cublasLt_LtFp8Matmul.h"
 #include "helpers.h"
 
-int main() {
-    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float> props(64, 128, 256, 2.0f, 0.0f /* ignored */, 32ULL * 1024 * 1024);
+int main(int argc, char **argv) {
+    if (argc != 4) {
+        printf("Usage: %s <m> <n> <k>\n", argv[0]);
+        return 1;
+    }
+    int m = atoi(argv[1]);
+    int n = atoi(argv[2]);
+    int k = atoi(argv[3]);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float> props(m, n, k, 1.0f, 1.0f, 32ULL * 1024 * 1024);
 
     props.run([&props] {
         LtFp8Matmul(props.ltHandle,
@@ -44,6 +51,7 @@ int main() {
                     props.n,
                     props.k,
                     &props.alpha,
+                    &props.beta,
                     props.AscaleDev,
                     props.Adev,
                     props.k,
@@ -52,6 +60,7 @@ int main() {
                     props.k,
                     props.CscaleDev,
                     props.Cdev,
+                    props.Ddev,
                     props.m,
                     props.DscaleDev,
                     props.DamaxDev,

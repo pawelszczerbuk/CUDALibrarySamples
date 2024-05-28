@@ -40,6 +40,7 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                  int n,
                  int k,
                  const float *alpha, /* host pointer */
+                 const float *beta, /* host pointer */
                  const float *a_scale, /* device pointer */
                  const __nv_fp8_e4m3 *A,
                  int lda,
@@ -47,6 +48,7 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                  const __nv_fp8_e4m3 *B,
                  int ldb,
                  const float *c_scale, /* device pointer */
+                 __half *C,
                  __nv_fp8_e4m3 *D,
                  int ldc,
                  const float *d_scale, /* device pointer */
