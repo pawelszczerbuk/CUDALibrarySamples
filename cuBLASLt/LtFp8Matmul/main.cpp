@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     int m = atoi(argv[1]);
     int n = atoi(argv[2]);
     int k = atoi(argv[3]);
-    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float> props(m, n, k, 1.0f, 1.0f, 32ULL * 1024 * 1024);
+    TestBench<__nv_fp8_e4m3, __nv_fp8_e4m3, float> props(m, n, k, 1.0f, 0.0f, 32ULL * 1024 * 1024);
 
     props.run([&props] {
         LtFp8Matmul(props.ltHandle,
