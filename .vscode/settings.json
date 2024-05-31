@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "ttgir": "MLIR",
+        "ttir": "MLIR",
+        "stdexcept": "cpp"
+    }
+}

@@ -28,8 +28,32 @@
 
 #include <cublasLt.h>
 
-#include "helpers.h"
+// #include "helpers.h"
 #include "sample_cublasLt_LtFp8Matmul.h"
+
+cublasLtCreate_t _cublasLtCreate;
+cublasLtDestroy_t _cublasLtDestroy;
+cublasLtMatmul_t _cublasLtMatmul;
+cublasLtMatmulDescCreate_t _cublasLtMatmulDescCreate;
+cublasLtMatmulDescSetAttribute_t _cublasLtMatmulDescSetAttribute;
+cublasLtMatrixLayoutCreate_t _cublasLtMatrixLayoutCreate;
+cublasLtMatmulPreferenceCreate_t _cublasLtMatmulPreferenceCreate;
+cublasLtMatmulPreferenceSetAttribute_t _cublasLtMatmulPreferenceSetAttribute;
+cublasLtMatmulAlgoGetHeuristic_t _cublasLtMatmulAlgoGetHeuristic;
+cublasLtMatmulPreferenceDestroy_t _cublasLtMatmulPreferenceDestroy;
+cublasLtMatmulDescDestroy_t _cublasLtMatmulDescDestroy;
+cublasLtMatrixLayoutDestroy_t _cublasLtMatrixLayoutDestroy;
+
+cudaMalloc_t _cudaMalloc;
+cudaFree_t _cudaFree;
+cudaStreamCreate_t _cudaStreamCreate;
+cudaStreamDestroy_t _cudaStreamDestroy;
+cudaStreamSynchronize_t _cudaStreamSynchronize;
+cudaMemcpyAsync_t _cudaMemcpyAsync;
+cudaGetErrorString_t _cudaGetErrorString;
+
+void* cublasLtHandle;
+void* cudaHandle;
 
 /// Sample wrapper executing fp8 matmul with cublasLtMatmul, with addition of per-tensor scaling, amax calculations, and
 /// the workspace to support split-K algorithms.
@@ -71,11 +95,11 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
 
     // create operation desciriptor; see cublasLtMatmulDescAttributes_t for details about defaults; here we just need to
     // set the transforms for A and B
-    checkCublasStatus(cublasLtMatmulDescCreate(&operationDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
+    checkCublasStatus(_cublasLtMatmulDescCreate(&operationDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
+    checkCublasStatus(_cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
+    checkCublasStatus(_cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
 
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_FAST_ACCUM, &fastAccum, sizeof(fastAccum)));
+    checkCublasStatus(_cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_FAST_ACCUM, &fastAccum, sizeof(fastAccum)));
 
     // set scaling factors
     // checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &a_scale, sizeof(a_scale)));
@@ -86,26 +110,26 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
 
     // create matrix descriptors, we are good with the details here so no need to set any extra attributes
     // table of supported type combinations can be found in the documentation: https://docs.nvidia.com/cuda/cublas/index.html#cublasltmatmul
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_8F_E4M3, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_8F_E4M3, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_16BF, m, n, ldc));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_8F_E4M3, m, n, ldc));
+    checkCublasStatus(_cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_8F_E4M3, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
+    checkCublasStatus(_cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_8F_E4M3, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
+    checkCublasStatus(_cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_16BF, m, n, ldc));
+    checkCublasStatus(_cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_8F_E4M3, m, n, ldc));
 
     // create preference handle; here we could use extra attributes to disable tensor ops or to make sure algo selected
     // will work with badly aligned A, B, C; here for simplicity we just assume A,B,C are always well aligned (e.g.
     // directly come from cudaMalloc)
-    checkCublasStatus(cublasLtMatmulPreferenceCreate(&preference));
-    checkCublasStatus(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize)));
+    checkCublasStatus(_cublasLtMatmulPreferenceCreate(&preference));
+    checkCublasStatus(_cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize)));
 
     // we just need the best available heuristic to try and run matmul. There is no guarantee this will work, e.g. if A
     // is badly aligned, you can request more (e.g. 32) algos and try to run them one by one until something works
-    checkCublasStatus(cublasLtMatmulAlgoGetHeuristic(ltHandle, operationDesc, Adesc, Bdesc, Cdesc, Ddesc, preference, 1, &heuristicResult, &returnedResults));
+    checkCublasStatus(_cublasLtMatmulAlgoGetHeuristic(ltHandle, operationDesc, Adesc, Bdesc, Cdesc, Ddesc, preference, 1, &heuristicResult, &returnedResults));
 
     if (returnedResults == 0) {
         checkCublasStatus(CUBLAS_STATUS_NOT_SUPPORTED);
     }
 
-    checkCublasStatus(cublasLtMatmul(ltHandle,
+    checkCublasStatus(_cublasLtMatmul(ltHandle,
                                      operationDesc,
                                      alpha,
                                      A,
@@ -123,10 +147,10 @@ void LtFp8Matmul(cublasLtHandle_t ltHandle,
                                      0));
 
     // descriptors are no longer needed as all GPU work was already enqueued
-    if (preference) checkCublasStatus(cublasLtMatmulPreferenceDestroy(preference));
-    if (Ddesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Ddesc));
-    if (Cdesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Cdesc));
-    if (Bdesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Bdesc));
-    if (Adesc) checkCublasStatus(cublasLtMatrixLayoutDestroy(Adesc));
-    if (operationDesc) checkCublasStatus(cublasLtMatmulDescDestroy(operationDesc));
+    if (preference) checkCublasStatus(_cublasLtMatmulPreferenceDestroy(preference));
+    if (Ddesc) checkCublasStatus(_cublasLtMatrixLayoutDestroy(Ddesc));
+    if (Cdesc) checkCublasStatus(_cublasLtMatrixLayoutDestroy(Cdesc));
+    if (Bdesc) checkCublasStatus(_cublasLtMatrixLayoutDestroy(Bdesc));
+    if (Adesc) checkCublasStatus(_cublasLtMatrixLayoutDestroy(Adesc));
+    if (operationDesc) checkCublasStatus(_cublasLtMatmulDescDestroy(operationDesc));
 }

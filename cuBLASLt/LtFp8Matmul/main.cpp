@@ -33,13 +33,16 @@
 #include <cublasLt.h>
 
 #include "sample_cublasLt_LtFp8Matmul.h"
-#include "helpers.h"
+// #include "helpers.h"
 
 int main(int argc, char **argv) {
     if (argc != 4) {
         printf("Usage: %s <m> <n> <k>\n", argv[0]);
         return 1;
     }
+
+    loadCudaFunctions();
+
     int m = atoi(argv[1]);
     int n = atoi(argv[2]);
     int k = atoi(argv[3]);
@@ -67,6 +70,8 @@ int main(int argc, char **argv) {
                     props.workspace,
                     props.workspaceSize);
     });
+
+    unloadCudaFunctions();
 
     return 0;
 }

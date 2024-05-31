@@ -27,7 +27,7 @@
  */
 
 #pragma once
-
+/*
 #include <cstdio>
 #include <stdexcept>
 #include <vector>
@@ -173,4 +173,4 @@ inline void TestBench<__half, __half, cuComplex>::fillData() {
     for (int i = 0; i < m * k * N; i++) Ahost[i] = __float2half_rn(i/100.);
     for (int i = 0; i < n * k * N; i++) Bhost[i] = __float2half_rn(i/100.);
     for (int i = 0; i < m * N; i++) biasHost[i] = __float2half_rn(i + 1);
-}
+}*/
